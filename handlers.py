@@ -292,9 +292,10 @@ async def process_meeting_type(message: Message, state: FSMContext):
 @router.message(StateFilter(OrderStates.waiting_for_date_time))
 async def process_date_time(message: Message, state: FSMContext):
     """Обработка даты и времени встречи"""
-    # Простая валидация формата
-    pattern = r"(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})"
-    match = re.match(pattern, message.text)
+    # Простая валидация формата, допускаем лишние пробелы и однозначные числа
+    user_input = message.text.strip()
+    pattern = r"^\s*(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})\s*$"
+    match = re.match(pattern, user_input)
 
     if not match:
         await message.answer(
@@ -316,7 +317,9 @@ async def process_date_time(message: Message, state: FSMContext):
         # Проверка корректности даты
         selected_datetime = datetime(year, month, day, hour, minute)
         # Проверка, что дата не в прошлом
-        if selected_datetime < datetime.now():
+        # Округляем текущее время до минут для корректного сравнения
+        now = datetime.now().replace(second=0, microsecond=0)
+        if selected_datetime < now:
             await message.answer(
                 "❌ Нельзя выбрать дату в прошлом. Пожалуйста, выберите будущую дату."
             )
@@ -325,7 +328,7 @@ async def process_date_time(message: Message, state: FSMContext):
         await message.answer("❌ Неверная дата. Проверьте правильность ввода.")
         return
 
-    await state.update_data(date_time=message.text)
+    await state.update_data(date_time=selected_datetime.strftime("%d.%m.%Y %H:%M"))
     await message.answer(
         "📞 <b>Введите ваш номер телефона:</b>\n\n"
         "Вы можете поделиться контактом или ввести номер вручную.",
