@@ -1,0 +1,18 @@
+[Unit]
+Description=Udobnysklad Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/udobnysklad
+Environment="PATH=/root/udobnysklad/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/root/udobnysklad/venv/bin/python3 /root/udobnysklad/main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

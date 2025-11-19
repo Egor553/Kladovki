@@ -1,0 +1,19 @@
+[Unit]
+Description=Auto Update Service for Udobnysklad Bot
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/udobnysklad
+Environment="PATH=/root/udobnysklad/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="GITHUB_REPO=Kladovki/udobnysklad"
+Environment="GITHUB_BRANCH=main"
+Environment="PROJECT_DIR=/root/udobnysklad"
+ExecStart=/root/udobnysklad/venv/bin/python3 /root/udobnysklad/auto_update.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
