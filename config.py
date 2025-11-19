@@ -1,6 +1,7 @@
 import os
 import random
 import logging
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,7 +34,7 @@ def load_proxies(file_path: str = "proxies.txt") -> list:
     return proxies
 
 
-def get_random_proxy() -> str | None:
+def get_random_proxy() -> Optional[str]:
     """Получить случайный прокси"""
     proxies = load_proxies()
     if proxies:
