@@ -12,7 +12,7 @@ from keyboards import (
     get_application_actions_keyboard,
     get_profile_keyboard,
 )
-from config import AREA_OPTIONS, LOCATIONS, ADMIN_CHAT_ID
+from config import AREA_OPTIONS, LOCATIONS, ADMIN_CHAT_ID, CHELYABINSK_TZ
 from database import db
 import logging
 
@@ -39,22 +39,30 @@ def format_application_for_user(app: dict) -> str:
     area_name = area_info.get("name", "Не указано")
 
     # Парсим дату создания
-    created_at = app.get("created_at", "")
-    if isinstance(created_at, str):
+    created_at = app.get("created_at")
+    if isinstance(created_at, str) and created_at:
         try:
-            # Пробуем разные форматы даты
-            if "T" in created_at:
-                dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            created_at_clean = created_at.replace("Z", "+00:00")
+            if "T" in created_at_clean:
+                dt = datetime.fromisoformat(created_at_clean)
             else:
-                dt = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
-            date_str = dt.strftime("%d.%m.%Y %H:%M")
-        except:
-            # Если не удалось распарсить, берем первые 16 символов
+                dt = datetime.strptime(created_at_clean, "%Y-%m-%d %H:%M:%S")
+                dt = dt.replace(tzinfo=CHELYABINSK_TZ)
+            date_str = dt.astimezone(CHELYABINSK_TZ).strftime("%d.%m.%Y %H:%M")
+        except Exception:
             date_str = created_at[:16] if len(created_at) > 16 else created_at
+    elif isinstance(created_at, datetime):
+        date_str = created_at.astimezone(CHELYABINSK_TZ).strftime("%d.%m.%Y %H:%M")
     else:
-        date_str = (
-            str(created_at)[:16] if len(str(created_at)) > 16 else str(created_at)
-        )
+        if created_at:
+            created_at_str = str(created_at)
+            date_str = (
+                created_at_str[:16]
+                if len(created_at_str) > 16
+                else created_at_str
+            )
+        else:
+            date_str = "не указано"
 
     status_text = {
         "pending": "⏳ Ожидает обработки",
@@ -123,20 +131,29 @@ async def cmd_profile(message: Message, state: FSMContext):
 
     if stats["last_application"]:
         last_app = stats["last_application"]
-        created_at = last_app.get("created_at", "")
-        if isinstance(created_at, str):
+        created_at = last_app.get("created_at")
+        if isinstance(created_at, str) and created_at:
             try:
-                if "T" in created_at:
-                    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                created_at_clean = created_at.replace("Z", "+00:00")
+                if "T" in created_at_clean:
+                    dt = datetime.fromisoformat(created_at_clean)
                 else:
-                    dt = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
-                date_str = dt.strftime("%d.%m.%Y %H:%M")
-            except:
+                    dt = datetime.strptime(created_at_clean, "%Y-%m-%d %H:%M:%S")
+                    dt = dt.replace(tzinfo=CHELYABINSK_TZ)
+                date_str = dt.astimezone(CHELYABINSK_TZ).strftime("%d.%m.%Y %H:%M")
+            except Exception:
                 date_str = created_at[:16] if len(created_at) > 16 else created_at
-        else:
+        elif isinstance(created_at, datetime):
+            date_str = created_at.astimezone(CHELYABINSK_TZ).strftime("%d.%m.%Y %H:%M")
+        elif created_at:
+            created_at_str = str(created_at)
             date_str = (
-                str(created_at)[:16] if len(str(created_at)) > 16 else str(created_at)
+                created_at_str[:16]
+                if len(created_at_str) > 16
+                else created_at_str
             )
+        else:
+            date_str = "не указано"
         text += f"\n📋 Последняя заявка: #{last_app['id']} ({date_str})"
 
     await message.answer(text, reply_markup=get_profile_keyboard(), parse_mode="HTML")
