@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def format_username(username: str | None) -> str:
+    """Подготовка ника пользователя для сообщений"""
+    if not username:
+        return "не указан"
+    return username if username.startswith("@") else f"@{username}"
+
+
 def format_application_for_user(app: dict) -> str:
     """Форматирование заявки для отображения пользователю"""
     location = next(
@@ -291,6 +298,19 @@ async def delete_application(callback: CallbackQuery, state: FSMContext):
             deleted_from_chat = True
         except Exception as e:
             logger.error(f"Ошибка при удалении сообщения из админ-чата: {e}")
+
+    # Уведомляем админ-чат об отмене заявки
+    if ADMIN_CHAT_ID:
+        username = (
+            callback.from_user.username or application.get("username") or "не указан"
+        )
+        notify_text = (
+            f"❌ Заявка #{application_id} отменена пользователем {format_username(username)}"
+        )
+        try:
+            await callback.bot.send_message(ADMIN_CHAT_ID, notify_text)
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления об отмене заявки: {e}")
 
     # Получаем обновленный список заявок
     applications = db.get_user_applications(user_id)
