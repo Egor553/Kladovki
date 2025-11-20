@@ -1,7 +1,6 @@
 import logging
 import re
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
@@ -9,8 +8,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from config import (ADMIN_CHAT_ID, AREA_OPTIONS, LOADERS_CONTACT, LOCATIONS,
-                    find_nearest_locations, get_map_link)
+from config import (ADMIN_CHAT_ID, AREA_OPTIONS, CHELYABINSK_TZ,
+                    LOADERS_CONTACT, LOCATIONS, find_nearest_locations,
+                    get_map_link)
 from database import db
 from keyboards import (get_application_actions_keyboard,
                        get_applications_keyboard, get_area_keyboard,
@@ -22,8 +22,6 @@ from keyboards import (get_application_actions_keyboard,
                        get_yes_no_keyboard)
 
 logger = logging.getLogger(__name__)
-
-CHELYABINSK_TZ = ZoneInfo("Asia/Yekaterinburg")
 
 router = Router()
 
@@ -81,11 +79,28 @@ def format_application(data: dict) -> str:
     elif data.get("meeting_type") == "Заказать обратный звонок":
         text += "   📞 Обратный звонок запрошен\n"
 
-    chelyabinsk_now = datetime.now(CHELYABINSK_TZ)
-    text += (
-        f"\n🕐 <b>Время заявки (Челябинск):</b> "
-        f"{chelyabinsk_now.strftime('%d.%m.%Y %H:%M')}"
-    )
+    created_at_display = None
+    created_at_raw = data.get("created_at")
+
+    if isinstance(created_at_raw, datetime):
+        created_at_display = created_at_raw.astimezone(CHELYABINSK_TZ).strftime(
+            "%d.%m.%Y %H:%M"
+        )
+    elif isinstance(created_at_raw, str):
+        try:
+            parsed_dt = datetime.fromisoformat(created_at_raw)
+            if parsed_dt.tzinfo is None:
+                parsed_dt = parsed_dt.replace(tzinfo=CHELYABINSK_TZ)
+            created_at_display = parsed_dt.astimezone(CHELYABINSK_TZ).strftime(
+                "%d.%m.%Y %H:%M"
+            )
+        except ValueError:
+            pass
+
+    if not created_at_display:
+        created_at_display = datetime.now(CHELYABINSK_TZ).strftime("%d.%m.%Y %H:%M")
+
+    text += f"\n🕐 <b>Время заявки (Челябинск):</b> {created_at_display}"
 
     return text
 
@@ -476,6 +491,8 @@ async def process_phone(message: Message, state: FSMContext):
 async def finish_application(message: Message, state: FSMContext):
     """Завершение заявки и отправка в админ-чат"""
     data = await state.get_data()
+    created_at = datetime.now(CHELYABINSK_TZ)
+    data["created_at"] = created_at.isoformat()
 
     # Добавляем user_id в данные
     data["user_id"] = message.from_user.id
@@ -501,6 +518,7 @@ async def finish_application(message: Message, state: FSMContext):
         user_id=message.from_user.id,
         application_data=data,
         admin_message_id=admin_message_id,
+        created_at=created_at,
     )
 
     # Отправка пользователю подтверждение
