@@ -16,6 +16,82 @@ from config import AREA_OPTIONS, LOCATIONS, ADMIN_CHAT_ID, CHELYABINSK_TZ, LOADE
 from database import db
 import logging
 
+# Импортируем функции форматирования из handlers
+def format_application_for_admin(data: dict) -> str:
+    """Форматирование заявки для отправки в админ-чат (копия из handlers)"""
+    location = next(
+        (loc for loc in LOCATIONS if loc["id"] == data.get("location_id")), None
+    )
+    location_name = location["name"] if location else "Не указано"
+    location_address = (
+        location.get("address", location_name) if location else "Не указано"
+    )
+
+    area_info = AREA_OPTIONS.get(data.get("area", ""), {})
+    area_name = area_info.get("name", "Не указано")
+
+    text = f"""
+📋 <b>НОВАЯ ЗАЯВКА</b>
+
+👤 <b>Пользователь:</b> @{data.get('username', 'не указан')}
+🆔 <b>ID пользователя:</b> {data.get('user_id', 'не указан')}
+📞 <b>Телефон:</b> {data.get('phone', 'не указан')}
+
+1️⃣ <b>Тип хранения:</b> {data.get('storage_type', 'не указано')}
+
+2️⃣ <b>Площадь:</b> {area_name}
+   {area_info.get('dimensions', '')}
+   {area_info.get('price_from', '')}
+
+3️⃣ <b>Локация:</b> {location_name}
+   Адрес: {location_address}
+   График работы: {location['schedule'] if location else 'не указано'}
+   {'✅ Есть вилочный погрузчик' if location and location.get('has_forklift') else ''}
+   {'🔥 АКЦИЯ' if location and location.get('is_promotion') else ''}
+   {'📍 ' + get_map_link(location_address) if location else ''}
+
+4️⃣ <b>Газель и грузчики:</b> {data.get('loaders', 'не указано')}
+   {f'📞 Контакт: {LOADERS_CONTACT}' if data.get('loaders') == 'Да' else ''}
+
+5️⃣ <b>Тип встречи:</b> {data.get('meeting_type', 'не указано')}
+"""
+
+    if data.get("meeting_type") == "Выбрать дату и время встречи":
+        text += f"   📅 Дата и время: {data.get('date_time', 'не указано')}\n"
+    elif data.get("meeting_type") == "Заказать обратный звонок":
+        text += "   📞 Обратный звонок запрошен\n"
+
+    created_at_display = None
+    created_at_raw = data.get("created_at")
+
+    if isinstance(created_at_raw, datetime):
+        created_at_display = created_at_raw.astimezone(CHELYABINSK_TZ).strftime(
+            "%d.%m.%Y %H:%M"
+        )
+    elif isinstance(created_at_raw, str):
+        try:
+            parsed_dt = datetime.fromisoformat(created_at_raw)
+            if parsed_dt.tzinfo is None:
+                parsed_dt = parsed_dt.replace(tzinfo=CHELYABINSK_TZ)
+            created_at_display = parsed_dt.astimezone(CHELYABINSK_TZ).strftime(
+                "%d.%m.%Y %H:%M"
+            )
+        except ValueError:
+            pass
+
+    if not created_at_display:
+        created_at_display = datetime.now(CHELYABINSK_TZ).strftime("%d.%m.%Y %H:%M")
+
+    text += f"\n🕐 <b>Время заявки (Челябинск):</b> {created_at_display}"
+
+    return text
+
+
+def format_application_cancelled(original_text: str, user_id: int, username: str) -> str:
+    """Добавление информации об отмене заявки к существующему тексту"""
+    cancelled_info = f"\n\n❌ <b>ЗАЯВКА ОТМЕНЕНА</b>\n👤 <b>Пользователь отменил заявку:</b> {format_username(username)}\n🆔 <b>ID пользователя:</b> {user_id}"
+    return original_text + cancelled_info
+
 logger = logging.getLogger(__name__)
 
 router = Router()
@@ -312,24 +388,22 @@ async def delete_application(callback: CallbackQuery, state: FSMContext):
             username = (
                 callback.from_user.username or application.get("username") or "не указан"
             )
-            user_id = callback.from_user.id
+            user_id_for_cancel = callback.from_user.id
             
             # Формируем текст заявки заново из данных application
-            from handlers import format_application
             application_data = dict(application)
-            application_data['user_id'] = user_id
-            application_data['username'] = username
+            application_data['user_id'] = application.get('user_id', user_id_for_cancel)
+            application_data['username'] = application.get('username', username)
+            
             # Добавляем created_at если его нет
             if 'created_at' not in application_data or not application_data.get('created_at'):
-                from datetime import datetime
-                from config import CHELYABINSK_TZ
                 application_data['created_at'] = datetime.now(CHELYABINSK_TZ).isoformat()
             
-            original_text = format_application(application_data)
+            # Формируем оригинальный текст заявки
+            original_text = format_application_for_admin(application_data)
             
             # Добавляем информацию об отмене
-            from handlers import format_application_cancelled
-            updated_text = format_application_cancelled(original_text, user_id, username)
+            updated_text = format_application_cancelled(original_text, user_id_for_cancel, username)
             
             # Редактируем сообщение
             await callback.bot.edit_message_text(
@@ -339,8 +413,9 @@ async def delete_application(callback: CallbackQuery, state: FSMContext):
                 parse_mode="HTML"
             )
             message_updated = True
+            logger.info(f"Сообщение заявки #{application_id} успешно обновлено в админ-чате")
         except Exception as e:
-            logger.error(f"Ошибка при редактировании сообщения в админ-чате: {e}")
+            logger.error(f"Ошибка при редактировании сообщения в админ-чате: {e}", exc_info=True)
             # Если не удалось отредактировать, отправляем новое сообщение
             username = (
                 callback.from_user.username or application.get("username") or "не указан"
@@ -351,6 +426,7 @@ async def delete_application(callback: CallbackQuery, state: FSMContext):
             )
             try:
                 await callback.bot.send_message(ADMIN_CHAT_ID, notify_text, parse_mode="HTML")
+                logger.info(f"Отправлено новое сообщение об отмене заявки #{application_id}")
             except Exception as send_error:
                 logger.error(f"Ошибка при отправке уведомления об отмене заявки: {send_error}")
 
