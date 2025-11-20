@@ -1,6 +1,7 @@
 import logging
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
@@ -21,6 +22,8 @@ from keyboards import (get_application_actions_keyboard,
                        get_yes_no_keyboard)
 
 logger = logging.getLogger(__name__)
+
+CHELYABINSK_TZ = ZoneInfo("Asia/Yekaterinburg")
 
 router = Router()
 
@@ -78,7 +81,11 @@ def format_application(data: dict) -> str:
     elif data.get("meeting_type") == "Заказать обратный звонок":
         text += "   📞 Обратный звонок запрошен\n"
 
-    text += f"\n🕐 <b>Время заявки:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+    chelyabinsk_now = datetime.now(CHELYABINSK_TZ)
+    text += (
+        f"\n🕐 <b>Время заявки (Челябинск):</b> "
+        f"{chelyabinsk_now.strftime('%d.%m.%Y %H:%M')}"
+    )
 
     return text
 
@@ -315,10 +322,12 @@ async def process_date_time(message: Message, state: FSMContext):
 
     try:
         # Проверка корректности даты
-        selected_datetime = datetime(year, month, day, hour, minute)
+        selected_datetime = datetime(
+            year, month, day, hour, minute, tzinfo=CHELYABINSK_TZ
+        )
         # Проверка, что дата не в прошлом
         # Округляем текущее время до минут для корректного сравнения
-        now = datetime.now().replace(second=0, microsecond=0)
+        now = datetime.now(CHELYABINSK_TZ).replace(second=0, microsecond=0)
         if selected_datetime < now:
             await message.answer(
                 "❌ Нельзя выбрать дату в прошлом. Пожалуйста, выберите будущую дату."
