@@ -98,17 +98,27 @@ class Database:
         user_id: int,
         application_data: Dict,
         admin_message_id: Optional[int] = None,
+        created_at: Optional[datetime] = None,
     ) -> int:
         """Создать новую заявку"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                created_at_value = None
+                if isinstance(created_at, datetime):
+                    created_at_value = created_at.isoformat()
+                elif isinstance(application_data.get("created_at"), str):
+                    created_at_value = application_data.get("created_at")
+                else:
+                    created_at_value = datetime.now().isoformat()
+
                 cursor.execute(
                     """
                     INSERT INTO applications (
                         user_id, username, phone, storage_type, area, location_id,
-                        loaders, meeting_type, date_time, admin_message_id, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                        loaders, meeting_type, date_time, admin_message_id, status,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
                 """,
                     (
                         user_id,
@@ -121,6 +131,8 @@ class Database:
                         application_data.get("meeting_type"),
                         application_data.get("date_time"),
                         admin_message_id,
+                        created_at_value,
+                        created_at_value,
                     ),
                 )
                 conn.commit()
