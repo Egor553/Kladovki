@@ -12,7 +12,7 @@ from keyboards import (
     get_application_actions_keyboard,
     get_profile_keyboard,
 )
-from config import AREA_OPTIONS, LOCATIONS, ADMIN_CHAT_ID, CHELYABINSK_TZ
+from config import AREA_OPTIONS, LOCATIONS, ADMIN_CHAT_ID, CHELYABINSK_TZ, LOADERS_CONTACT, get_map_link
 from database import db
 import logging
 
@@ -305,29 +305,54 @@ async def delete_application(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Заявка не найдена", show_alert=True)
         return
 
-    # Удаляем сообщение из админ-чата, если есть
-    deleted_from_chat = False
+    # Редактируем сообщение в админ-чате, добавляя информацию об отмене
+    message_updated = False
     if ADMIN_CHAT_ID and application.get("admin_message_id"):
         try:
-            await callback.bot.delete_message(
-                chat_id=ADMIN_CHAT_ID, message_id=application["admin_message_id"]
+            username = (
+                callback.from_user.username or application.get("username") or "не указан"
             )
-            deleted_from_chat = True
+            user_id = callback.from_user.id
+            
+            # Формируем текст заявки заново из данных application
+            from handlers import format_application
+            application_data = dict(application)
+            application_data['user_id'] = user_id
+            application_data['username'] = username
+            # Добавляем created_at если его нет
+            if 'created_at' not in application_data or not application_data.get('created_at'):
+                from datetime import datetime
+                from config import CHELYABINSK_TZ
+                application_data['created_at'] = datetime.now(CHELYABINSK_TZ).isoformat()
+            
+            original_text = format_application(application_data)
+            
+            # Добавляем информацию об отмене
+            from handlers import format_application_cancelled
+            updated_text = format_application_cancelled(original_text, user_id, username)
+            
+            # Редактируем сообщение
+            await callback.bot.edit_message_text(
+                chat_id=ADMIN_CHAT_ID,
+                message_id=application["admin_message_id"],
+                text=updated_text,
+                parse_mode="HTML"
+            )
+            message_updated = True
         except Exception as e:
-            logger.error(f"Ошибка при удалении сообщения из админ-чата: {e}")
-
-    # Уведомляем админ-чат об отмене заявки
-    if ADMIN_CHAT_ID:
-        username = (
-            callback.from_user.username or application.get("username") or "не указан"
-        )
-        notify_text = (
-            f"❌ Заявка #{application_id} отменена пользователем {format_username(username)}"
-        )
-        try:
-            await callback.bot.send_message(ADMIN_CHAT_ID, notify_text)
-        except Exception as e:
-            logger.error(f"Ошибка при отправке уведомления об отмене заявки: {e}")
+            logger.error(f"Ошибка при редактировании сообщения в админ-чате: {e}")
+            # Если не удалось отредактировать, отправляем новое сообщение
+            username = (
+                callback.from_user.username or application.get("username") or "не указан"
+            )
+            notify_text = (
+                f"❌ Заявка #{application_id} отменена пользователем {format_username(username)}\n"
+                f"🆔 ID пользователя: {callback.from_user.id}"
+            )
+            try:
+                await callback.bot.send_message(ADMIN_CHAT_ID, notify_text, parse_mode="HTML")
+            except Exception as send_error:
+                logger.error(f"Ошибка при отправке уведомления об отмене заявки: {send_error}")
 
     # Получаем обновленный список заявок
     applications = db.get_user_applications(user_id)
@@ -337,7 +362,7 @@ async def delete_application(callback: CallbackQuery, state: FSMContext):
         try:
             await callback.message.edit_text(
                 f"✅ <b>Заявка #{application_id} удалена</b>\n\n"
-                f"{'Сообщение также удалено из админ-чата.' if deleted_from_chat else ''}\n\n"
+                f"{'Сообщение в админ-чате обновлено с информацией об отмене.' if message_updated else ''}\n\n"
                 f"📋 <b>Ваши заявки ({len(applications)}):</b>\n\n"
                 "Выберите заявку для просмотра:",
                 reply_markup=get_applications_keyboard(applications),
@@ -351,7 +376,7 @@ async def delete_application(callback: CallbackQuery, state: FSMContext):
         try:
             await callback.message.edit_text(
                 f"✅ <b>Заявка #{application_id} удалена</b>\n\n"
-                f"{'Сообщение также удалено из админ-чата.' if deleted_from_chat else ''}\n\n"
+                f"{'Сообщение в админ-чате обновлено с информацией об отмене.' if message_updated else ''}\n\n"
                 "📋 У вас больше нет заявок.\n"
                 "Создайте новую заявку с помощью команды /start",
                 reply_markup=get_profile_keyboard(),
