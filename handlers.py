@@ -36,6 +36,13 @@ class OrderStates(StatesGroup):
     waiting_for_phone = State()
 
 
+def format_username(username: str | None) -> str:
+    """Подготовка ника пользователя для сообщений"""
+    if not username:
+        return "не указан"
+    return username if username.startswith("@") else f"@{username}"
+
+
 def format_application(data: dict) -> str:
     """Форматирование заявки для отправки в админ-чат"""
     location = next(
@@ -53,6 +60,7 @@ def format_application(data: dict) -> str:
 📋 <b>НОВАЯ ЗАЯВКА</b>
 
 👤 <b>Пользователь:</b> @{data.get('username', 'не указан')}
+🆔 <b>ID пользователя:</b> {data.get('user_id', 'не указан')}
 📞 <b>Телефон:</b> {data.get('phone', 'не указан')}
 
 1️⃣ <b>Тип хранения:</b> {data.get('storage_type', 'не указано')}
@@ -103,6 +111,12 @@ def format_application(data: dict) -> str:
     text += f"\n🕐 <b>Время заявки (Челябинск):</b> {created_at_display}"
 
     return text
+
+
+def format_application_cancelled(original_text: str, user_id: int, username: str) -> str:
+    """Добавление информации об отмене заявки к существующему тексту"""
+    cancelled_info = f"\n\n❌ <b>ЗАЯВКА ОТМЕНЕНА</b>\n👤 <b>Пользователь отменил заявку:</b> {format_username(username)}\n🆔 <b>ID пользователя:</b> {user_id}"
+    return original_text + cancelled_info
 
 
 @router.message(Command("start"))
