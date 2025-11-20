@@ -2,6 +2,7 @@ import os
 import random
 import logging
 from typing import Optional
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,6 +14,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "8116404876:AAHWPmfrDN5pWSq6kHCDFsrGIByWfNttp
 ADMIN_CHAT_ID = os.getenv(
     "ADMIN_CHAT_ID", "-1003458828164"
 )  # ID чата для получения заявок
+CHELYABINSK_TZ = ZoneInfo("Asia/Yekaterinburg")
 
 
 def load_proxies(file_path: str = "proxies.txt") -> list:
